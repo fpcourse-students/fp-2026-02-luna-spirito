@@ -126,19 +126,19 @@ task 2.1 (арифметика без рекурсии)
 -- minus n m = k, если plus m k = n, иначе 0; lt n m = true при n < m;
 -- equal n m = true при n = m.
 
-minus := ...
+minus := \n m. natElim m pred n
 check minus: normalizing, avoids Y
 expect minus 5 2 = 3
 expect minus 2 5 = 0
 expect minus 4 4 = 0
 
-lt := ...
+lt := \a b. not (isZero (minus b a))
 check lt: normalizing, avoids Y
 expect lt 2 5 = true
 expect lt 5 2 = false
 expect lt 3 3 = false
 
-equal := ...
+equal := \a b. and (not (lt a b)) (not (lt b a))
 check equal: normalizing, avoids Y
 expect equal 3 3 = true
 expect equal 3 4 = false
@@ -150,13 +150,13 @@ task 2.2 (рекурсивные функции: остаток и НОД)
 -- наибольший общий делитель по алгоритму Евклида (gcd a 0 = a).
 -- Пригодятся minus и lt из задачи 2.1.
 
-mod := ...
+mod := Y (\rec a b. if (lt a b) a (rec (minus a b) b))
 check mod: uses Y
 expect mod 7 3 = 1
 expect mod 6 3 = 0
 expect mod 2 5 = 2
 
-gcd := ...
+gcd := Y (\rec a b. if (isZero b) a (rec b (mod a b)))
 check gcd: uses Y
 expect gcd 6 4 = 2
 expect gcd 7 3 = 1
@@ -168,7 +168,7 @@ task 2.3 (последний элемент)
 -- Подсказка: пусть результат свёртки — вариант: inl — «правее элементов нет»,
 -- inr x — «последний элемент уже известен, это x». В конце разберите его через either.
 
-last := ...
+last := \l. either I I (fold l (\x. either (\_. inr x) inr) (inl 0))
 check last: normalizing, avoids Y
 expect last (cons 1 (cons 2 (cons 3 nil))) = 3
 expect last (cons 7 nil) = 7
@@ -177,12 +177,12 @@ expect last (cons 7 nil) = 7
 task 2.4 (пустота и склейка)
 -- Задайте без Y: isEmpty xs (true на пустом списке) и concat xs ys (склейка списков).
 
-isEmpty := ...
+isEmpty := \l. fold l (\_ _. false) true
 check isEmpty: normalizing, avoids Y
 expect isEmpty nil = true
 expect isEmpty (cons 0 nil) = false
 
-concat := ...
+concat := \a b. fold a cons b
 check concat: normalizing, avoids Y
 expect concat (cons 1 (cons 2 nil)) (cons 3 nil) = cons 1 (cons 2 (cons 3 nil))
 expect concat nil (cons 3 nil) = cons 3 nil
@@ -195,12 +195,12 @@ task 2.5 (поиск, который может не найти)
 -- если такого нет, inl 0. findOr d p xs возвращает найденный элемент или d
 -- (разберите результат find с помощью either).
 
-find := ...
+find := \f l. fold l (\x xs. if (f x) (inr x) xs) (inl 0)
 expect find isEven (cons 1 (cons 4 (cons 6 nil))) = inr 4
 expect find isEven (cons 1 (cons 3 nil)) = inl 0
 expect find isEven nil = inl 0
 
-findOr := ...
+findOr := \def f l. either (K def) I (find f l)
 expect findOr 7 isEven (cons 1 (cons 4 nil)) = 4
 expect findOr 7 isEven (cons 1 (cons 3 nil)) = 7
 
@@ -214,7 +214,17 @@ num := \n. inl n
 add := \a b. inr (inl (pair a b))
 mul := \a b. inr (inr (pair a b))
 
-eval := ...
+-- eval := Y (\rec n.
+--     either
+--         I
+--         (either
+--             (\p. plus (rec (fst p)) (rec (snd p)))
+--             (\p. mult (rec (fst p)) (rec (snd p)))
+--         )
+--         n
+--     )
+-- Мне было лень, так что я просто слил строки выше в одну, прошу извинить
+eval := Y (\rec n.either    I    (either        (\p. plus (rec (fst p)) (rec (snd p)))        (\p. mult (rec (fst p)) (rec (snd p)))    )    n)
 expect eval (num 3) = 3
 expect eval (add (num 1) (num 2)) = 3
 expect eval (mul (add (num 1) (num 2)) (num 4)) = 12
@@ -230,21 +240,34 @@ task 2.7 (две стратегии)
 
 chain t2_7_normal (strategy normal) =
   (\x. x x) (K I (I I))
-  ~b~> ...
+  ~b~> ((K I) (I I)) (K I (I I))
+  ~b~> ((\_. I) (I I)) (K I (I I))
+  ~b~> I (K I (I I))
+  ~b~> K I (I I)
+  ~b~> (\_. I) (I I)
+  ~b~> I
 
 chain t2_7_applicative (strategy applicative) =
-  (\x. x x) (K I (I I))
-  ~b~> ...
+  (\x. x x) ((K I) (I I))
+  ~b~> (\x. x x) ((\_. I) (I I))
+  ~b~> (\x. x x) ((\_. I) I)
+  ~b~> (\x. x x) I
+  ~b~> I I
+  ~b~> I
 
 
 task 2.8 (примеры нормальных форм)
 -- Приведите примеры замкнутых термов (объяснение выбора — комментарием здесь же):
 -- (а) в WHNF, но не в HNF; (б) в HNF, но не в NF.
 
-t2_8a := ...
+-- WHNF, так как на верхнем уровне лямбда. Однако сразу лямбдой находится
+-- головной редекс `I a`, так что это не HNF.
+t2_8a := \x a. I a
 check t2_8a: closed, whnf, not hnf
 
-t2_8b := ...
+-- HNF, так как на верхнем уровне лямбда, а телом лямбды является нередуцируемый
+-- `a (I b)`. Однако, так `I b` всё ещё редуцируем, это не нормальная форма.
+t2_8b := \x a b. a (I b)
 check t2_8b: closed, hnf, not nf
 
 
